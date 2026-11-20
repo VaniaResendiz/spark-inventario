@@ -71,6 +71,40 @@ La volatilidad se calcula como `(precio_max - precio_min) / precio_min × 100`.
 - Ejercicio 4: Laptop 3600, Mouse 55, Teclado 75.
 - Ejercicio 5: 20 personas, 10 mayores de 30 años.
 
+## Preguntas de reflexión
+
+**1. Eficiencia.** `split()` recorre toda la línea y crea una lista nueva. Si se
+llama una vez por columna, se repite ese trabajo. En `parsear_linea` se hace una
+sola vez y se reutilizan `p[0]`...`p[4]`. Con 1 millón de líneas y 5 columnas,
+serían 5 millones de splits en lugar de 1 millón (una quinta parte del trabajo de
+parseo). Con las 30 líneas de este proyecto la diferencia no se nota.
+
+**2. Particionamiento.** Mi RDD tiene 2 particiones (`rdd.getNumPartitions()`).
+Cada partición se procesa como una tarea independiente, así que con 2 pueden
+ejecutarse en paralelo. Con 1 sola partición todo correría en una única tarea,
+sin paralelismo: en un clúster, los demás núcleos quedarían sin trabajo.
+
+**3. Lazy evaluation.** Las transformaciones (`map`, `filter`, `reduceByKey`) no
+se ejecutaron al escribirlas, sino en la primera acción: `productos.count()`.
+La ventaja es que Spark ve el plan completo y lo optimiza, por ejemplo encadenando
+`map` y `filter` en una sola pasada sin guardar resultados intermedios.
+
+**4. Memoria.** `collect()` trae todos los datos al driver. Con un RDD de 10 GB
+probablemente produciría `OutOfMemoryError`. Se evita con `take(n)` para
+muestras, agregando antes de traer datos (`reduceByKey` redujo 30 filas a 6
+categorías) o guardando con `saveAsTextFile`.
+
+**5. Optimización (100x más datos).** Aumentaría las particiones
+(`minPartitions` o `repartition`), mantendría `cache()` en el RDD que se reutiliza
+si cabe en RAM, evitaría `collect()` sobre datos grandes, ajustaría
+`spark.sql.shuffle.partitions` y migraría a DataFrames, que Spark optimiza mejor.
+
+**6. HDFS vs. local.** HDFS reparte y replica los datos entre nodos: si uno falla,
+se lee otra réplica, y Spark puede procesar cada bloque cerca de donde está
+guardado. Un archivo local vive en una sola máquina, sin tolerancia a fallos ni
+paralelismo entre nodos. Para este análisis (986 bytes) no hay diferencia práctica,
+pero con datos grandes HDFS sería la opción correcta.
+
 ## Conceptos aplicados
 
 - **Lazy evaluation:** las transformaciones no se ejecutan hasta llamar a una acción.
